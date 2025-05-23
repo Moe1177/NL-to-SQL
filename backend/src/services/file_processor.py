@@ -1,7 +1,7 @@
 import os
 import tempfile
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import pandas as pd
 from fastapi import UploadFile
@@ -14,6 +14,36 @@ class FileProcessor:
 
     def __init__(self):
         self.db_manager = DatabaseManager()
+
+    async def process_json_data(self, data: List[Dict[str, Any]], filename: str) -> Dict[str, Any]:
+        """
+        Process JSON data from frontend and store in SQLite database.
+
+        Args:
+            data: List of dictionaries containing the data
+            filename: Original filename for table naming
+
+        Returns:
+            Dict containing table info, columns, sample data, etc.
+        """
+        # Convert JSON data to DataFrame
+        df = pd.DataFrame(data)
+
+        # Generate unique table name
+        table_name = self._generate_table_name(filename)
+
+        # Store DataFrame in SQLite database
+        self.db_manager.create_table_from_dataframe(df, table_name)
+
+        # Prepare response data
+        table_info = {
+            "table_name": table_name,
+            "columns": list(df.columns),
+            "sample_data": df.head(50).to_dict("records"),
+            "row_count": len(df),
+        }
+
+        return table_info
 
     async def process_uploaded_file(self, file: UploadFile) -> Dict[str, Any]:
         """

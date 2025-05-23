@@ -1,8 +1,9 @@
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
 
-from models.schemas import FileUploadResponse, QueryRequest, QueryResponse
+from models.schemas import FileUploadResponse, QueryRequest, QueryResponse, UploadRequest
 from services.database_manager import DatabaseManager
 from services.file_processor import FileProcessor
 from services.llm_service import LLMService
@@ -29,20 +30,32 @@ llm_service = LLMService()
 
 
 @app.post("/upload", response_model=FileUploadResponse)
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: Optional[UploadFile] = File(None),
+    json_data: Optional[list] = None,
+    filename: Optional[str] = None
+):
     """
-    Upload a CSV or Excel file and create a SQLite table from it.
+    Upload a CSV/Excel file or JSON data and create a SQLite table from it.
     Returns table info and column details for context.
     """
     try:
-        # Validate file type
-        if not file.filename.endswith((".csv", ".xlsx", ".xls")):
+        if file:
+            # Validate file type
+            if not file.filename.endswith((".csv", ".xlsx", ".xls")):
+                raise HTTPException(
+                    status_code=400, detail="Only CSV and Excel files are supported"
+                )
+            # Process the uploaded file
+            table_info = await file_processor.process_uploaded_file(file)
+        elif json_data and filename:
+            # Process JSON data
+            table_info = await file_processor.process_json_data(json_data, filename)
+        else:
             raise HTTPException(
-                status_code=400, detail="Only CSV and Excel files are supported"
+                status_code=400,
+                detail="Either file or JSON data with filename must be provided"
             )
-
-        # Process the uploaded file
-        table_info = await file_processor.process_uploaded_file(file)
 
         return FileUploadResponse(
             success=True,
@@ -53,7 +66,7 @@ async def upload_file(file: UploadFile = File(...)):
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing data: {str(e)}")
 
 
 @app.post("/query", response_model=QueryResponse)
