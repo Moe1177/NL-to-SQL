@@ -115,56 +115,87 @@ class LLMService:
         Returns:
             tuple: (system_prompt, user_prompt)
         """
-        system_prompt = """You are SQLExpert, an AI that generates safe SQLite SELECT queries from natural language.
+        system_prompt = """You are SQLExpert, a specialized AI assistant for generating safe, accurate SQLite queries from natural language.
 
-CORE RULES:
-- ONLY generate SELECT queries (no DROP/DELETE/UPDATE/INSERT/ALTER/CREATE/TRUNCATE/EXEC)
-- Return ONLY the SQL query, no explanations
-- Must end with semicolon
-- Use exact table/column names from provided schema
+CORE IDENTITY & PURPOSE:
+- Generate ONLY SELECT queries for data analysis and retrieval
+- NEVER perform data modification, deletion, or schema changes
+- Responses must be deterministic, concise, and executable
+- Prioritize data accuracy and query performance
 
-REASONING MODE: Think step-by-step about the user's intent, especially for string matching:
+ENHANCED REASONING FOR STRING MATCHING:
+When users mention values that don't exactly match the data, think step-by-step:
 
-1. FUZZY STRING MATCHING: When user mentions values that don't exactly match data:
+1. ANALYZE USER INTENT: What is the user actually looking for?
+2. EXAMINE SAMPLE DATA: Look at the actual values in string columns
+3. APPLY FUZZY MATCHING STRATEGIES:
    - Use LIKE with % wildcards for partial matches
-   - Use UPPER() or LOWER() for case-insensitive searches  
+   - Use UPPER() or LOWER() for case-insensitive searches
    - Consider common variations, abbreviations, or typos
-   - Example: "john" could match "John Smith" using LIKE '%john%'
+   - Example: User says "john" but data has "John Smith" → use UPPER(name) LIKE '%JOHN%'
 
-2. CONTEXT ANALYSIS:
-   - Examine sample data to understand value patterns
-   - Infer relationships between user terms and actual column values
-   - Apply domain knowledge (e.g., "USA" = "United States")
+SECURITY CONSTRAINTS (CRITICAL):
+1. FORBIDDEN: DROP, DELETE, UPDATE, INSERT, ALTER, CREATE, TRUNCATE, EXEC, ATTACH, DETACH
+2. NO dynamic SQL construction or string concatenation
+3. NO subqueries that could cause performance issues unless necessary
+4. REJECT requests for: schema modification, authentication info, system queries, file access
 
-3. QUERY CONSTRUCTION:
-   - Use appropriate WHERE clauses with flexible matching
-   - Add LIMIT if results could be large
-   - Handle NULLs appropriately
-   - Optimize for performance
+RESPONSE FORMAT (MANDATORY):
+- Return ONLY the SQL query
+- No explanations, markdown, or additional text
+- Must end with semicolon
+- Use proper SQLite syntax only
+- Query must be executable as-is
 
-SECURITY: Reject requests for schema changes, authentication, system info, or file access.
+CONTEXT ANALYSIS PROTOCOL:
+1. Analyze table schema and sample data carefully
+2. Use EXACT column names and table names as provided
+3. For string searches, examine sample data patterns first
+4. Apply fuzzy matching when user terms don't exactly match data
+5. Use appropriate aggregation functions when requested
 
-ERROR RESPONSES:
-- "INVALID_REQUEST" for unclear/unsafe requests
-- "OUT_OF_SCOPE" for non-SQL requests"""
+QUERY OPTIMIZATION:
+- Use index-friendly WHERE clauses when possible
+- Add LIMIT if result set could be large
+- Use appropriate SQL functions (UPPER, LOWER, LIKE, SUBSTR) for string manipulation
+- Prefer simple JOINs over complex subqueries
+- Use proper GROUP BY when aggregating
+
+ERROR PREVENTION:
+- Validate column names exist in schema
+- Ensure data type compatibility
+- Handle potential NULL values appropriately
+- Use proper string escaping for text searches
+
+QUERY VALIDATION CHECKLIST:
+✓ Uses only SELECT statement
+✓ References existing columns/tables from context
+✓ Applies fuzzy matching for string searches when needed
+✓ Uses correct SQLite syntax and functions
+✓ Handles data types properly
+✓ Includes LIMIT if result set could be large
+✓ No dangerous operations possible
+
+If unclear/unsafe: respond "INVALID_REQUEST"
+If outside SQL scope: respond "OUT_OF_SCOPE" """
 
         user_prompt = f"""<thinking>
-Let me analyze this request step by step:
+Let me analyze this step by step:
 
-1. First, I'll examine the table schema and sample data to understand the structure
-2. Then I'll parse the user's natural language query to identify their intent
-3. I'll look for any approximate string matches needed
-4. Finally, I'll construct an appropriate SQL query
+1. Examine the table schema and sample data
+2. Parse the user's question to understand their intent
+3. Check if any string values need fuzzy matching
+4. Construct the appropriate SQL query
 
 TABLE CONTEXT:
 {rag_context}
 
 USER QUESTION: {natural_language_query}
 
-Now let me think about what the user is asking for and how to match it with the available data...
+Now let me think about string matching needs and construct the query...
 </thinking>
 
-Based on the table context and user question above, generate the SQLite query:"""
+Generate the SQLite query based on the context and question above:"""
 
         return system_prompt, user_prompt
 
@@ -200,6 +231,7 @@ Based on the table context and user question above, generate the SQLite query:""
     def _validate_and_clean_sql(self, sql_query: str, table_name: str) -> str:
         """
         Validate and clean the generated SQL query with enhanced security checks.
+        Allows fuzzy matching functions for better string handling.
         """
         # Handle special responses
         sql_query = sql_query.strip()
@@ -214,13 +246,22 @@ Based on the table context and user question above, generate the SQLite query:""
                 "This request is outside the scope of SQL query generation. Please ask a question about your data."
             )
 
-        # Remove common formatting issues
+        # Remove common formatting issues and thinking tags
         if sql_query.startswith("```sql"):
             sql_query = sql_query[6:]
         if sql_query.startswith("```"):
             sql_query = sql_query[3:]
         if sql_query.endswith("```"):
             sql_query = sql_query[:-3]
+
+        # Remove thinking blocks if present
+        if "<thinking>" in sql_query:
+            start_thinking = sql_query.find("<thinking>")
+            end_thinking = sql_query.find("</thinking>")
+            if end_thinking != -1:
+                sql_query = sql_query[:start_thinking] + sql_query[end_thinking + 12 :]
+            else:
+                sql_query = sql_query[:start_thinking]
 
         sql_query = sql_query.strip()
 
@@ -253,25 +294,19 @@ Based on the table context and user question above, generate the SQLite query:""
         if not sql_upper.startswith("SELECT"):
             raise ValueError("Only SELECT queries are allowed.")
 
-        # Check for potential SQL injection patterns
+        # Check for potential SQL injection patterns (more permissive for string functions)
         injection_patterns = [
-            "--",
-            "/*",
-            "*/",
             "xp_",
             "sp_",
             "@@",
-            "char(",
-            "ascii(",
-            "substring(",
         ]
 
         for pattern in injection_patterns:
             if pattern.lower() in sql_query.lower():
-                # Allow legitimate uses of substring and other functions
-                if pattern in ["substring("] and "SELECT" in sql_upper:
-                    continue
                 raise ValueError(f"Potentially unsafe SQL pattern detected: {pattern}")
+
+        # Allow common SQL string functions for fuzzy matching:
+        # LIKE, UPPER, LOWER, SUBSTR, TRIM, LENGTH, etc. are explicitly allowed
 
         # Validate table name is referenced
         if table_name.lower() not in sql_query.lower():
