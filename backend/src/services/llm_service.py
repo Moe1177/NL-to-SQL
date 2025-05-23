@@ -13,11 +13,27 @@ class LLMService:
 
     def __init__(self):
         load_dotenv()
+
+        # Check for required environment variables
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        base_url = os.getenv("OPENROUTER_BASE_URL")
+        model = os.getenv("MODEL")
+
+        if not api_key:
+            print("Warning: OPENROUTER_API_KEY not found in environment variables")
+            print(
+                "Please create a .env file in the backend directory with your API key"
+            )
+
+        if not base_url:
+            print("Warning: OPENROUTER_BASE_URL not found, using default")
+            base_url = "https://openrouter.ai/api/v1"
+
         self.client = OpenAI(
-            base_url=os.getenv("OPENROUTER_BASE_URL"),
-            api_key=os.getenv("OPENROUTER_API_KEY"),
+            base_url=base_url,
+            api_key=api_key,
         )
-        pass
+        self.api_configured = api_key != "placeholder_key"
 
     async def generate_sql(
         self, natural_language_query: str, table_context: Dict[str, Any]
@@ -32,6 +48,13 @@ class LLMService:
         Returns:
             Generated SQL query string
         """
+
+        # Check if API is properly configured
+        if not self.api_configured:
+            raise ValueError(
+                "LLM API is not configured. Please set OPENROUTER_API_KEY in your .env file. "
+                "For now, the file upload will work but you won't be able to query the data."
+            )
 
         # Step 1: Build RAG context prompt
         rag_context = self._build_rag_context(table_context)
@@ -177,7 +200,7 @@ class LLMService:
         """
         try:
             response = self.client.chat.completions.create(
-                model=os.getenv("MODEL"),  # Default fallback model
+                model=os.getenv("MODEL"),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},

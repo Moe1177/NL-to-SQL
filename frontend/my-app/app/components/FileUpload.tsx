@@ -21,8 +21,8 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-      // Send data to backend
-      const response = await fetch("http://localhost:8000/upload", {
+      // Send data to backend using the correct endpoint
+      const response = await fetch("http://localhost:8000/upload-json", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -34,7 +34,8 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to upload data to server");
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to upload data to server");
       }
 
       const result = await response.json();

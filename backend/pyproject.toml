@@ -16,7 +16,7 @@ python-multipart = "^0.0.17"
 openpyxl = "^3.1.5"
 pydantic = "^2.11.5"
 openai = "^1.82.0"
-dotenv = "^0.9.9"
+python-dotenv = "^1.0.0"
 autopep8 = "^2.3.2"
 
 

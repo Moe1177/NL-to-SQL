@@ -2,11 +2,24 @@ import uvicorn
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
+from pydantic import BaseModel
 
-from models.schemas import FileUploadResponse, QueryRequest, QueryResponse, UploadRequest
+from models.schemas import (
+    FileUploadResponse,
+    QueryRequest,
+    QueryResponse,
+    UploadRequest,
+)
 from services.database_manager import DatabaseManager
 from services.file_processor import FileProcessor
 from services.llm_service import LLMService
+
+
+# Add a request model for JSON uploads
+class JsonUploadRequest(BaseModel):
+    json_data: list
+    filename: str
+
 
 app = FastAPI(
     title="Natural Language to SQL API",
@@ -30,32 +43,47 @@ llm_service = LLMService()
 
 
 @app.post("/upload", response_model=FileUploadResponse)
-async def upload_file(
-    file: Optional[UploadFile] = File(None),
-    json_data: Optional[list] = None,
-    filename: Optional[str] = None
-):
+async def upload_file(file: Optional[UploadFile] = File(None)):
     """
-    Upload a CSV/Excel file or JSON data and create a SQLite table from it.
+    Upload a CSV/Excel file and create a SQLite table from it.
     Returns table info and column details for context.
     """
     try:
-        if file:
-            # Validate file type
-            if not file.filename.endswith((".csv", ".xlsx", ".xls")):
-                raise HTTPException(
-                    status_code=400, detail="Only CSV and Excel files are supported"
-                )
-            # Process the uploaded file
-            table_info = await file_processor.process_uploaded_file(file)
-        elif json_data and filename:
-            # Process JSON data
-            table_info = await file_processor.process_json_data(json_data, filename)
-        else:
+        if not file:
+            raise HTTPException(status_code=400, detail="No file provided")
+
+        # Validate file type
+        if not file.filename.endswith((".csv", ".xlsx", ".xls")):
             raise HTTPException(
-                status_code=400,
-                detail="Either file or JSON data with filename must be provided"
+                status_code=400, detail="Only CSV and Excel files are supported"
             )
+
+        # Process the uploaded file
+        table_info = await file_processor.process_uploaded_file(file)
+
+        return FileUploadResponse(
+            success=True,
+            table_name=table_info["table_name"],
+            columns=table_info["columns"],
+            sample_data=table_info["sample_data"],
+            row_count=table_info["row_count"],
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing data: {str(e)}")
+
+
+@app.post("/upload-json", response_model=FileUploadResponse)
+async def upload_json_data(request: JsonUploadRequest):
+    """
+    Upload JSON data and create a SQLite table from it.
+    Returns table info and column details for context.
+    """
+    try:
+        # Process JSON data
+        table_info = await file_processor.process_json_data(
+            request.json_data, request.filename
+        )
 
         return FileUploadResponse(
             success=True,
