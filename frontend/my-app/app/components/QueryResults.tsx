@@ -13,28 +13,35 @@ export default function QueryResults({
   generatedSql,
   rowCount,
 }: QueryResultsProps) {
-  if (!results.length) return null;
+  if (!results.length) {
+    return (
+      <div className="w-full mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Query Results</h3>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-600 font-medium">No results found</p>
+          <p className="text-sm text-red-500 mt-1">
+            Generated SQL: {generatedSql}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full mt-8">
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-          Query Results
-        </h3>
-        <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
-          <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-            Generated SQL:
-          </p>
-          <pre className="bg-gray-100 dark:bg-gray-700 p-3 rounded text-sm overflow-x-auto">
-            {generatedSql}
-          </pre>
-        </div>
-      </div>
-
       <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-white">Query Results</h3>
         <span className="text-sm text-gray-500">
           Showing {results.length} of {rowCount} rows
         </span>
+      </div>
+
+      <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+        <p className="text-sm text-gray-600">
+          <span className="font-medium">Generated SQL:</span> {generatedSql}
+        </p>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">

@@ -35,7 +35,6 @@ class DatabaseManager:
             conn.close()
 
     def execute_query(self, sql_query: str, table_name: str) -> Dict[str, Any]:
-        print("execute_query")
         """
         Execute SQL query and return results.
 
@@ -45,30 +44,23 @@ class DatabaseManager:
 
         Returns:
             Dict containing query results, columns, and metadata
-
-        TODO: Add your custom logic here for:
-        - SQL query validation and sanitization
-        - Query performance optimization
-        - Result formatting and pagination
-        - Error handling for complex queries
         """
+        print(f"Executing query for table: {table_name}")  # Debug log
+        print(f"Query: {sql_query}")  # Debug log
+        
+        if not table_name:
+            raise ValueError("Table name cannot be empty")
+            
         conn = sqlite3.connect(self.db_path)
         try:
-            # TODO: Add SQL query validation here
-            # You should validate that:
-            # - Query only contains SELECT statements (no INSERT/UPDATE/DELETE)
-            # - Query references the correct table name
-            # - Query doesn't contain malicious SQL injection attempts
+            # Verify the table exists
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+            if not cursor.fetchone():
+                raise ValueError(f"Table '{table_name}' does not exist")
 
             # Execute query using pandas for easy result handling
             df_result = pd.read_sql_query(sql_query, conn)
-
-            # TODO: Add your result processing logic here
-            # Examples:
-            # - Format data types for JSON serialization
-            # - Handle large result sets with pagination
-            # - Apply post-processing transformations
-            # - Add summary statistics
 
             results = {
                 "data": df_result.to_dict("records"),
@@ -76,16 +68,19 @@ class DatabaseManager:
                 "row_count": len(df_result),
             }
 
+            print(f"Query executed successfully. Returned {len(df_result)} rows.")  # Debug log
             return results
 
+        except sqlite3.Error as e:
+            print(f"SQLite error while executing query: {str(e)}")  # Debug log
+            raise ValueError(f"Database error: {str(e)}")
         except Exception as e:
-            # TODO: Add better error handling and logging
-            raise Exception(f"Error executing SQL query: {str(e)}")
+            print(f"Unexpected error while executing query: {str(e)}")  # Debug log
+            raise ValueError(f"Error executing query: {str(e)}")
         finally:
             conn.close()
 
     def get_table_context(self, table_name: str) -> Dict[str, Any]:
-        print("get_table_context")
         """
         Get table context for RAG (column info, sample data, etc.).
         This provides context to the LLM for better SQL generation.
@@ -95,22 +90,30 @@ class DatabaseManager:
 
         Returns:
             Dict containing table schema and sample data for RAG context
-
-        TODO: Enhance this method to provide better context:
-        - Add column data types and constraints
-        - Include column statistics (min, max, avg, unique values)
-        - Add relationship information if multiple tables
-        - Include data quality metrics
         """
+        print(f"Getting context for table: {table_name}")  # Debug log
+        
+        if not table_name:
+            raise ValueError("Table name cannot be empty")
+            
         conn = sqlite3.connect(self.db_path)
         
         try:
-            # Get table schema information
+            # First verify the table exists
             cursor = conn.cursor()
-            cursor.execute(f"PRAGMA table_info({table_name})")
-            print("before column info ")
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+            if not cursor.fetchone():
+                raise ValueError(f"Table '{table_name}' does not exist")
+            
+            # Get table schema information
+            # Escape table name by wrapping in quotes
+            cursor.execute(f'PRAGMA table_info("{table_name}")')
+            print(f"Retrieved schema for table: {table_name}")  # Debug log
+            
             columns_info = cursor.fetchall()
-            print("after column info ")
+            if not columns_info:
+                raise ValueError(f"No columns found in table '{table_name}'")
+            
             # Format column information
             columns = []
             for col_info in columns_info:
@@ -123,17 +126,17 @@ class DatabaseManager:
                 )
 
             # Get sample data (first few rows for context)
-            sample_df = pd.read_sql_query(f"SELECT * FROM {table_name} LIMIT 3", conn)
+            # Escape table name by wrapping in quotes
+            sample_df = pd.read_sql_query(
+                f'SELECT * FROM "{table_name}" LIMIT 3',
+                conn
+            )
             sample_data = sample_df.to_dict("records")
 
             # Get row count
-            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            # Escape table name by wrapping in quotes
+            cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
             row_count = cursor.fetchone()[0]
-
-            # TODO: Add more context information here:
-            # - Column statistics (DISTINCT values, etc.)
-            # - Data patterns and examples
-            # - Business context if available
 
             context = {
                 "table_name": table_name,
@@ -143,8 +146,15 @@ class DatabaseManager:
                 "column_names": [col["name"] for col in columns],
             }
 
+            print(f"Successfully retrieved context for table: {table_name}")  # Debug log
             return context
 
+        except sqlite3.Error as e:
+            print(f"SQLite error while getting table context: {str(e)}")  # Debug log
+            raise ValueError(f"Database error: {str(e)}")
+        except Exception as e:
+            print(f"Unexpected error while getting table context: {str(e)}")  # Debug log
+            raise ValueError(f"Error getting table context: {str(e)}")
         finally:
             conn.close()
 

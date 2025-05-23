@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 interface PromptInputProps {
   onSubmit: (prompt: string) => void;
@@ -17,6 +17,7 @@ export default function PromptInput({
 }: PromptInputProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>("");
+  const formRef = useRef<HTMLFormElement>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -28,6 +29,7 @@ export default function PromptInput({
       setError("");
 
       try {
+        console.log("Sending query with table name:", tableName);
         const response = await fetch("http://localhost:8000/query", {
           method: "POST",
           headers: {
@@ -41,14 +43,19 @@ export default function PromptInput({
 
         if (!response.ok) {
           const errorData = await response.json();
+          console.error("Query error response:", errorData);
           throw new Error(errorData.detail || "Failed to process query");
         }
 
         const result = await response.json();
+        console.log("Query result:", result);
         if (result.success) {
           onQueryResult(result);
           onSubmit(prompt.trim());
-          e.currentTarget.reset();
+          // Reset form using the ref
+          if (formRef.current) {
+            formRef.current.reset();
+          }
         } else {
           throw new Error(result.error_message || "Failed to process query");
         }
@@ -65,7 +72,7 @@ export default function PromptInput({
 
   return (
     <div className="w-full">
-      <form onSubmit={handleSubmit} className="w-full">
+      <form ref={formRef} onSubmit={handleSubmit} className="w-full">
         <div className="relative">
           <input
             type="text"

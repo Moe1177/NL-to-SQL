@@ -17,6 +17,12 @@ export default function Home() {
     newFileName: string,
     newTableName: string
   ) => {
+    console.log("handleFileUpload called with:", {
+      dataLength: newData.length,
+      fileName: newFileName,
+      tableName: newTableName,
+    }); // Debug log
+
     setData(newData);
     setFileName(newFileName);
     setTableName(newTableName);
@@ -29,6 +35,7 @@ export default function Home() {
   };
 
   const handleQueryResult = (result: any) => {
+    console.log("Query result received:", result); // Debug log
     setQueryResult(result);
   };
 

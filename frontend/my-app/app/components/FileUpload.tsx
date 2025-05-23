@@ -21,7 +21,7 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-      console.log("Sending data:", {
+      console.log("Sending data to /upload-json:", {
         json_data: jsonData,
         filename: file.name,
       }); // Debug log
@@ -44,7 +44,10 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
       }
 
       const result = await response.json();
+      console.log("Received response from /upload-json:", result); // Debug log
+
       if (result.success) {
+        console.log("Calling onFileUpload with table name:", result.table_name); // Debug log
         onFileUpload(jsonData, file.name, result.table_name);
       } else {
         throw new Error(result.error_message || "Failed to process file");

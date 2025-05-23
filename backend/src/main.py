@@ -52,6 +52,8 @@ async def upload_json_data(request: JsonUploadRequest):
         table_info = await file_processor.process_json_data(
             request.json_data, request.filename
         )
+        
+        print(f"Upload JSON - Generated table name: {table_info['table_name']}")  # Debug log
 
         return FileUploadResponse(
             success=True,
@@ -62,6 +64,7 @@ async def upload_json_data(request: JsonUploadRequest):
         )
 
     except Exception as e:
+        print(f"Upload JSON Error: {str(e)}")  # Debug log
         raise HTTPException(status_code=500, detail=f"Error processing data: {str(e)}")
 
 
@@ -72,19 +75,22 @@ async def natural_language_query(request: QueryRequest):
     Uses RAG to provide context to LLM for SQL generation.
     """
     try:
+        print(f"Query - Received table name: {request.table_name}")  # Debug log
+        
         # Step 1: Get table context for RAG
         table_context = db_manager.get_table_context(request.table_name)
-        print("step 1 ")
+        print(f"Query - Table context retrieved for: {request.table_name}")  # Debug log
 
         # Step 2: Generate SQL using LLM with RAG context
         sql_query = await llm_service.generate_sql(
             natural_language_query=request.query, table_context=table_context
         )
-        print("step 2 ")
+        print(f"Query - Generated SQL: {sql_query}")  # Debug log
 
         # Step 3: Execute SQL query on the data
         results = db_manager.execute_query(sql_query, request.table_name)
-        print("step 3 ")
+        print(f"Query - Executed query successfully")  # Debug log
+        
         return QueryResponse(
             success=True,
             generated_sql=sql_query,
@@ -94,6 +100,7 @@ async def natural_language_query(request: QueryRequest):
         )
 
     except Exception as e:
+        print(f"Query Error: {str(e)}")  # Debug log
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
 
