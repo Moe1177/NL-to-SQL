@@ -3,6 +3,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 from openai import OpenAI
+import re
 
 
 class LLMService:
@@ -50,61 +51,168 @@ class LLMService:
             Generated SQL query string
         """
 
-        # Check if API is properly configured
-        if not self.api_configured:
-            raise ValueError(
-                "LLM API is not configured. Please set OPENROUTER_API_KEY in your .env file. "
-                "For now, the file upload will work but you won't be able to query the data."
+        try:
+            # Check if API is properly configured
+            if not self.api_configured:
+                raise ValueError(
+                    "LLM API is not configured. Please set OPENROUTER_API_KEY in your .env file. "
+                    "For now, the file upload will work but you won't be able to query the data."
+                )
+
+            print(
+                f"Building RAG context for table: {table_context.get('table_name', 'Unknown')}"
             )
 
-        # Step 1: Build RAG context prompt
-        rag_context = self._build_rag_context(table_context)
+            # Step 1: Build RAG context prompt
+            rag_context = self._build_rag_context(table_context)
+            print(f"RAG context built successfully, length: {len(rag_context)}")
 
-        # Step 2: Create separate system and user prompts for the LLM
-        system_prompt, user_prompt = self._create_prompt(
-            natural_language_query, rag_context
-        )
+            # Step 2: Create separate system and user prompts for the LLM
+            system_prompt, user_prompt = self._create_prompt(
+                natural_language_query, rag_context
+            )
+            print(
+                f"Prompts created successfully, system prompt length: {len(system_prompt)}, user prompt length: {len(user_prompt)}"
+            )
 
-        # Step 3: Call OpenAI API with optimized prompts
-        sql_query = await self._call_llm(system_prompt, user_prompt)
+            # Step 3: Call OpenAI API with optimized prompts
+            print("Calling LLM API...")
+            sql_query = await self._call_llm(system_prompt, user_prompt)
+            print(f"LLM response received: {repr(sql_query[:100])}...")
 
-        # Step 4: Post-process and validate the generated SQL
-        validated_sql = self._validate_and_clean_sql(
-            sql_query, table_context["table_name"]
-        )
+            # Step 4: Post-process and validate the generated SQL
+            print("Validating and cleaning SQL...")
+            validated_sql = self._validate_and_clean_sql(
+                sql_query, table_context["table_name"]
+            )
+            print(f"Final validated SQL: {validated_sql}")
 
-        return validated_sql
+            return validated_sql
+
+        except Exception as e:
+            print(f"Error in generate_sql: {type(e).__name__}: {str(e)}")
+            import traceback
+
+            print(f"Full traceback: {traceback.format_exc()}")
+            raise e
 
     def _build_rag_context(self, table_context: Dict[str, Any]) -> str:
         """
-        Build RAG context string from table information.
-
-        TODO: Customize this method to create the best context for your LLM:
-        - Include column names and types
-        - Add sample data rows
-        - Include column statistics if available
-        - Add business context or column descriptions
+        Build enhanced RAG context for better string pattern recognition and typo detection.
         """
-        table_name = table_context["table_name"]
-        columns = table_context["columns"]
-        sample_data = table_context["sample_data"]
-        row_count = table_context["row_count"]
+        try:
+            table_name = table_context.get("table_name", "unknown_table")
+            columns = table_context.get("columns", [])
+            sample_data = table_context.get("sample_data", [])
+            row_count = table_context.get("row_count", 0)
 
-        # Basic context building (expand this based on your needs)
-        context = f"""
-                    Table: {table_name}
-                    Total rows: {row_count}
+            # Build context with enhanced string pattern information
+            context = f"Table: {table_name}\nTotal rows: {row_count}\n\nColumns:\n"
 
-                Columns:
-                """
-        for col in columns:
-            context += f"- {col['name']} ({col['type']})\n"
+            # Identify string columns for pattern analysis
+            string_columns = []
+            for col in columns:
+                col_name = (
+                    col.get("name", "unknown_column")
+                    if isinstance(col, dict)
+                    else str(col)
+                )
+                col_type = (
+                    col.get("type", "UNKNOWN") if isinstance(col, dict) else "UNKNOWN"
+                )
 
-        context += "\nSample data:\n"
-        for i, row in enumerate(sample_data[:2]):  # Show first 2 rows
-            context += f"Row {i+1}: {row}\n"
+                context += f"- {col_name} ({col_type})"
+                if col_type.upper() in ["TEXT", "VARCHAR", "CHAR", "STRING"]:
+                    string_columns.append(col_name)
+                    context += " [STRING - supports fuzzy matching]"
+                context += "\n"
 
-        return context
+            # Enhanced sample data display
+            context += f"\nSample data (first {min(3, len(sample_data))} rows):\n"
+            for i, row in enumerate(sample_data[:3]):
+                try:
+                    # Safely create row dictionary
+                    if isinstance(row, (list, tuple)) and len(row) >= len(columns):
+                        row_dict = {}
+                        for j, col in enumerate(columns):
+                            col_name = (
+                                col.get("name", f"col_{j}")
+                                if isinstance(col, dict)
+                                else str(col)
+                            )
+                            if j < len(row):
+                                row_dict[col_name] = row[j]
+                        context += f"Row {i+1}: {row_dict}\n"
+                    elif isinstance(row, dict):
+                        context += f"Row {i+1}: {row}\n"
+                    else:
+                        context += f"Row {i+1}: {row}\n"
+                except Exception as e:
+                    print(f"Warning: Error processing sample row {i+1}: {e}")
+                    context += f"Row {i+1}: [Error displaying row data]\n"
+
+            # Add string pattern hints if we have string columns
+            if string_columns and sample_data:
+                context += "\nString values found in data (for typo detection):\n"
+                for col_name in string_columns:
+                    try:
+                        # Find column index safely
+                        col_index = None
+                        for i, col in enumerate(columns):
+                            if (
+                                isinstance(col, dict) and col.get("name") == col_name
+                            ) or str(col) == col_name:
+                                col_index = i
+                                break
+
+                        if col_index is not None:
+                            # Get unique string values from sample data safely
+                            sample_values = []
+                            for row in sample_data[:10]:
+                                try:
+                                    if isinstance(
+                                        row, (list, tuple)
+                                    ) and col_index < len(row):
+                                        value = row[col_index]
+                                        if value is not None and str(value).strip():
+                                            sample_values.append(str(value))
+                                    elif isinstance(row, dict) and col_name in row:
+                                        value = row[col_name]
+                                        if value is not None and str(value).strip():
+                                            sample_values.append(str(value))
+                                except Exception:
+                                    continue
+
+                            # Remove duplicates and limit
+                            unique_values = list(set(sample_values))
+                            if unique_values:
+                                context += (
+                                    f"- {col_name}: {', '.join(unique_values[:5])}"
+                                )
+                                if len(unique_values) > 5:
+                                    context += "..."
+                                context += "\n"
+                    except Exception as e:
+                        print(
+                            f"Warning: Error processing string column {col_name}: {e}"
+                        )
+                        continue
+
+            return context
+
+        except Exception as e:
+            print(f"Error in _build_rag_context: {e}")
+            import traceback
+
+            print(f"Full traceback: {traceback.format_exc()}")
+
+            # Return a minimal fallback context
+            return f"""Table: {table_context.get('table_name', 'unknown_table')}
+Total rows: {table_context.get('row_count', 0)}
+
+Columns: {', '.join([str(col) for col in table_context.get('columns', [])])}
+
+Note: Error occurred while building detailed context. Using basic fallback."""
 
     def _create_prompt(
         self, natural_language_query: str, rag_context: str
@@ -127,12 +235,20 @@ ENHANCED REASONING FOR STRING MATCHING:
 When users mention values that don't exactly match the data, think step-by-step:
 
 1. ANALYZE USER INTENT: What is the user actually looking for?
-2. EXAMINE SAMPLE DATA: Look at the actual values in string columns
-3. APPLY FUZZY MATCHING STRATEGIES:
+2. EXAMINE SAMPLE DATA: Look at the actual values in string columns to identify potential matches
+3. NORMALIZE USER INPUT: Treat variations like "medical/health", "medical / health", "medical-health" as equivalent
+4. HANDLE TYPOS AND MISSPELLINGS: 
+   - Compare user input with actual data values to detect likely misspellings
+   - Common patterns: "enjeneering" → "engineering", "medicne" → "medicine", "buisness" → "business"
+   - If user input is similar to an actual data value, use the correct spelling from the data
+   - Example: User says "enjeneering" but sample data shows "Engineering" → use "ENGINEERING" in the query
+5. APPLY FUZZY MATCHING STRATEGIES:
    - Use LIKE with % wildcards for partial matches
    - Use UPPER() or LOWER() for case-insensitive searches
    - Consider common variations, abbreviations, or typos
-   - Example: User says "john" but data has "John Smith" → use UPPER(name) LIKE '%JOHN%'
+   - Handle punctuation variations (slashes, dashes, spaces)
+   - Example: User says "medical/health" but data has "Medical and Health Sciences" → use UPPER("Field of Study") LIKE '%MEDICAL%' AND UPPER("Field of Study") LIKE '%HEALTH%'
+6. BE CONSISTENT: Minor formatting changes in user input should produce similar queries
 
 SECURITY CONSTRAINTS (CRITICAL):
 1. FORBIDDEN: DROP, DELETE, UPDATE, INSERT, ALTER, CREATE, TRUNCATE, EXEC, ATTACH, DETACH
@@ -141,11 +257,12 @@ SECURITY CONSTRAINTS (CRITICAL):
 4. REJECT requests for: schema modification, authentication info, system queries, file access
 
 RESPONSE FORMAT (MANDATORY):
-- Return ONLY the SQL query
+- Return ONLY ONE SQL query - no variations, alternatives, or examples
 - No explanations, markdown, or additional text
 - Must end with semicolon
 - Use proper SQLite syntax only
 - Query must be executable as-is
+- Do NOT provide multiple query options
 
 CONTEXT ANALYSIS PROTOCOL:
 1. Analyze table schema and sample data carefully
@@ -179,23 +296,27 @@ QUERY VALIDATION CHECKLIST:
 If unclear/unsafe: respond "INVALID_REQUEST"
 If outside SQL scope: respond "OUT_OF_SCOPE" """
 
-        user_prompt = f"""<thinking>
-Let me analyze this step by step:
-
-1. Examine the table schema and sample data
-2. Parse the user's question to understand their intent
-3. Check if any string values need fuzzy matching
-4. Construct the appropriate SQL query
-
-TABLE CONTEXT:
+        user_prompt = f"""TABLE CONTEXT:
 {rag_context}
 
 USER QUESTION: {natural_language_query}
 
-Now let me think about string matching needs and construct the query...
+<thinking>
+Let me analyze this step by step:
+
+1. Examine the table schema and sample data
+2. Parse the user's question to understand their intent  
+3. Check for potential typos by comparing user terms with actual data values
+4. Apply appropriate string matching (exact, fuzzy, or corrected spelling)
+5. Construct the appropriate SQL query
+
+Looking at the question "{natural_language_query}" and the sample data above:
+- Are there any words that might be misspelled?
+- Do any actual data values closely match the user's terms?
+- What's the best way to match the user's intent with the available data?
 </thinking>
 
-Generate the SQLite query based on the context and question above:"""
+SELECT"""
 
         return system_prompt, user_prompt
 
@@ -254,18 +375,55 @@ Generate the SQLite query based on the context and question above:"""
         if sql_query.endswith("```"):
             sql_query = sql_query[:-3]
 
-        # Remove thinking blocks if present
-        if "<thinking>" in sql_query:
+        # Remove thinking blocks if present (more robust)
+        while "<thinking>" in sql_query:
             start_thinking = sql_query.find("<thinking>")
             end_thinking = sql_query.find("</thinking>")
             if end_thinking != -1:
                 sql_query = sql_query[:start_thinking] + sql_query[end_thinking + 12 :]
             else:
                 sql_query = sql_query[:start_thinking]
+                break
+
+        # Remove any remaining XML-like tags that might be present
+        sql_query = re.sub(r"<[^>]+>", "", sql_query)
+
+        # Remove common prefixes that might be added by the model
+        prefixes_to_remove = [
+            "Query:",
+            "SQL:",
+            "Answer:",
+            "Result:",
+            "The query is:",
+            "The SQL query is:",
+            "Here's the query:",
+            "Here is the query:",
+        ]
+
+        for prefix in prefixes_to_remove:
+            if sql_query.lower().startswith(prefix.lower()):
+                sql_query = sql_query[len(prefix) :].strip()
 
         sql_query = sql_query.strip()
 
-        # Enhanced security checks
+        # Since we start the prompt with "SELECT", prepend it if missing
+        if not sql_query.upper().startswith("SELECT"):
+            sql_query = "SELECT " + sql_query
+
+        # Handle multiple queries - take only the first one
+        if ";" in sql_query:
+            # Split by semicolon and take the first non-empty statement
+            statements = [stmt.strip() for stmt in sql_query.split(";") if stmt.strip()]
+            if statements:
+                sql_query = statements[0]
+                # Ensure we still have a complete statement
+                if not sql_query.endswith(";"):
+                    sql_query += ";"
+
+        # Remove any remaining newlines and clean up formatting
+        sql_query = " ".join(sql_query.split())
+
+        # Enhanced security checks - check for actual SQL keywords, not substrings
         dangerous_keywords = [
             "DROP",
             "DELETE",
@@ -282,10 +440,13 @@ Generate the SQLite query based on the context and question above:"""
             "VACUUM",
         ]
 
-        # Check for dangerous patterns
+        # Check for dangerous patterns as standalone words or at word boundaries
         sql_upper = sql_query.upper()
+
         for keyword in dangerous_keywords:
-            if keyword in sql_upper:
+            # Use word boundaries to match only standalone keywords
+            pattern = r"\b" + re.escape(keyword) + r"\b"
+            if re.search(pattern, sql_upper):
                 raise ValueError(
                     f"Dangerous SQL operation detected: {keyword}. Only SELECT queries are allowed."
                 )
