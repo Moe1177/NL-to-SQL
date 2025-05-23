@@ -46,7 +46,7 @@ class DatabaseManager:
             Dict containing query results, columns, and metadata
         """
         print(f"Executing query for table: {table_name}")  # Debug log
-        print(f"Query: {sql_query}")  # Debug log
+        print(f"Original query: {sql_query}")  # Debug log
         
         if not table_name:
             raise ValueError("Table name cannot be empty")
@@ -59,8 +59,14 @@ class DatabaseManager:
             if not cursor.fetchone():
                 raise ValueError(f"Table '{table_name}' does not exist")
 
+            # Replace unquoted table name with properly quoted version
+            # This handles cases where the LLM doesn't properly quote the table name
+            quoted_table_name = f'"{table_name}"'
+            modified_query = sql_query.replace(table_name, quoted_table_name)
+            print(f"Modified query: {modified_query}")  # Debug log
+
             # Execute query using pandas for easy result handling
-            df_result = pd.read_sql_query(sql_query, conn)
+            df_result = pd.read_sql_query(modified_query, conn)
 
             results = {
                 "data": df_result.to_dict("records"),
