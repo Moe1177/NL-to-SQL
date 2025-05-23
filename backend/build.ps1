@@ -1,6 +1,4 @@
 $PYTHON_VERSION = "3.11.8"
-$ENV_NAME = "fastapi_backend"
-$ENV_DISPLAY_NAME = "fastapi_backend"
 
 function Create-DataLink {
     param (
@@ -19,24 +17,23 @@ function Setup-Environment {
         exit 1
     }
     
-    # Create virtual environment
-    Write-Host "Creating virtual environment..." -ForegroundColor Yellow
-    python -m venv $ENV_DISPLAY_NAME
+    # Check if Poetry is installed
+    if (-not (Get-Command poetry -ErrorAction SilentlyContinue)) {
+        Write-Host "Installing Poetry..." -ForegroundColor Yellow
+        python -m pip install --upgrade pip
+        pip install poetry==1.8.5
+    }
     
-    # Activate the environment
-    Write-Host "Activating virtual environment..." -ForegroundColor Yellow
-    & .\$ENV_DISPLAY_NAME\Scripts\Activate.ps1
+    # Configure Poetry to create virtual environment in project directory
+    Write-Host "Configuring Poetry..." -ForegroundColor Yellow
+    poetry config virtualenvs.in-project true
     
-    # Update pip and install dependencies
-    Write-Host "Updating pip and installing dependencies..." -ForegroundColor Yellow
-    python -m pip install --upgrade pip
-    pip install poetry==1.8.5
-    
-    # Configure poetry and install dependencies
-    poetry config virtualenvs.create true
+    # Install dependencies using Poetry
+    Write-Host "Installing dependencies with Poetry..." -ForegroundColor Yellow
     poetry install --with dev
     
     Write-Host "Environment setup complete!" -ForegroundColor Green
+    Write-Host "To activate the environment, run: poetry shell" -ForegroundColor Cyan
 }
 
 function Update-Lock {
