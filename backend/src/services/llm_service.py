@@ -77,7 +77,7 @@ class LLMService:
             context += f"- {col['name']} ({col['type']})\n"
 
         context += "\nSample data:\n"
-        for i, row in enumerate(sample_data[:3]):  # Show first 3 rows
+        for i, row in enumerate(sample_data[:2]):  # Show first 2 rows
             context += f"Row {i+1}: {row}\n"
 
         return context
