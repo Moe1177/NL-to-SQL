@@ -5,7 +5,7 @@ import { useDropzone } from "react-dropzone";
 import * as XLSX from "xlsx";
 
 interface FileUploadProps {
-  onFileUpload: (data: any[], fileName: string) => void;
+  onFileUpload: (data: any[], fileName: string, tableName: string) => void;
 }
 
 export default function FileUpload({ onFileUpload }: FileUploadProps) {
@@ -21,7 +21,12 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-      // Send data to backend using the correct endpoint
+      console.log("Sending data:", {
+        json_data: jsonData,
+        filename: file.name,
+      }); // Debug log
+
+      // Send data to backend
       const response = await fetch("http://localhost:8000/upload-json", {
         method: "POST",
         headers: {
@@ -39,9 +44,17 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
       }
 
       const result = await response.json();
-      onFileUpload(jsonData, file.name);
+      if (result.success) {
+        onFileUpload(jsonData, file.name, result.table_name);
+      } else {
+        throw new Error(result.error_message || "Failed to process file");
+      }
     } catch (error) {
-      setError("Error processing file. Please try again.");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Error processing file. Please try again."
+      );
       console.error("Upload error:", error);
     } finally {
       setIsUploading(false);

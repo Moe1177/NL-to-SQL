@@ -106,15 +106,17 @@ async def natural_language_query(request: QueryRequest):
     try:
         # Step 1: Get table context for RAG
         table_context = db_manager.get_table_context(request.table_name)
+        print("step 1 ")
 
         # Step 2: Generate SQL using LLM with RAG context
         sql_query = await llm_service.generate_sql(
             natural_language_query=request.query, table_context=table_context
         )
+        print("step 2 ")
 
         # Step 3: Execute SQL query on the data
         results = db_manager.execute_query(sql_query, request.table_name)
-
+        print("step 3 ")
         return QueryResponse(
             success=True,
             generated_sql=sql_query,

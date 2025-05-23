@@ -38,6 +38,7 @@ class LLMService:
     async def generate_sql(
         self, natural_language_query: str, table_context: Dict[str, Any]
     ) -> str:
+        print("generate_sql")
         """
         Generate SQL query from natural language using RAG context.
 

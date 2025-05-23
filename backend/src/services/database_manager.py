@@ -35,6 +35,7 @@ class DatabaseManager:
             conn.close()
 
     def execute_query(self, sql_query: str, table_name: str) -> Dict[str, Any]:
+        print("execute_query")
         """
         Execute SQL query and return results.
 
@@ -84,6 +85,7 @@ class DatabaseManager:
             conn.close()
 
     def get_table_context(self, table_name: str) -> Dict[str, Any]:
+        print("get_table_context")
         """
         Get table context for RAG (column info, sample data, etc.).
         This provides context to the LLM for better SQL generation.
@@ -101,12 +103,14 @@ class DatabaseManager:
         - Include data quality metrics
         """
         conn = sqlite3.connect(self.db_path)
+        
         try:
             # Get table schema information
             cursor = conn.cursor()
             cursor.execute(f"PRAGMA table_info({table_name})")
+            print("before column info ")
             columns_info = cursor.fetchall()
-
+            print("after column info ")
             # Format column information
             columns = []
             for col_info in columns_info:

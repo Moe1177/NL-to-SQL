@@ -4,19 +4,32 @@ import { useState } from "react";
 import FileUpload from "./components/FileUpload";
 import PromptInput from "./components/PromptInput";
 import DataPreview from "./components/DataPreview";
+import QueryResults from "./components/QueryResults";
 
 export default function Home() {
   const [data, setData] = useState<any[]>([]);
   const [fileName, setFileName] = useState<string>("");
+  const [tableName, setTableName] = useState<string>("");
+  const [queryResult, setQueryResult] = useState<any>(null);
 
-  const handleFileUpload = (newData: any[], newFileName: string) => {
+  const handleFileUpload = (
+    newData: any[],
+    newFileName: string,
+    newTableName: string
+  ) => {
     setData(newData);
     setFileName(newFileName);
+    setTableName(newTableName);
+    setQueryResult(null); // Clear previous query results
   };
 
   const handlePromptSubmit = (prompt: string) => {
-    // TODO: Handle prompt submission
+    // This is now handled in the PromptInput component
     console.log("Prompt submitted:", prompt);
+  };
+
+  const handleQueryResult = (result: any) => {
+    setQueryResult(result);
   };
 
   return (
@@ -39,12 +52,27 @@ export default function Home() {
           {data.length > 0 && (
             <>
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-                <PromptInput onSubmit={handlePromptSubmit} />
+                <PromptInput
+                  onSubmit={handlePromptSubmit}
+                  tableName={tableName}
+                  onQueryResult={handleQueryResult}
+                />
               </div>
 
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-                <DataPreview data={data} fileName={fileName} />
-              </div>
+              {queryResult ? (
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+                  <QueryResults
+                    results={queryResult.results}
+                    columns={queryResult.columns}
+                    generatedSql={queryResult.generated_sql}
+                    rowCount={queryResult.row_count}
+                  />
+                </div>
+              ) : (
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+                  <DataPreview data={data} fileName={fileName} />
+                </div>
+              )}
             </>
           )}
         </div>
