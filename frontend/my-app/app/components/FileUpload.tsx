@@ -11,16 +11,39 @@ interface FileUploadProps {
 export default function FileUpload({ onFileUpload }: FileUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string>("");
+  const [isUploading, setIsUploading] = useState(false);
 
   const processFile = async (file: File) => {
     try {
+      setIsUploading(true);
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      // Send data to backend
+      const response = await fetch("http://localhost:8000/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          json_data: jsonData,
+          filename: file.name,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to upload data to server");
+      }
+
+      const result = await response.json();
       onFileUpload(jsonData, file.name);
     } catch (error) {
       setError("Error processing file. Please try again.");
+      console.error("Upload error:", error);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -69,9 +92,10 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
               ? "border-blue-500 bg-blue-50"
               : "border-gray-300 hover:border-blue-400"
           }
-          ${error ? "border-red-500" : ""}`}
+          ${error ? "border-red-500" : ""}
+          ${isUploading ? "opacity-50 cursor-not-allowed" : ""}`}
       >
-        <input {...getInputProps()} />
+        <input {...getInputProps()} disabled={isUploading} />
         <div className="space-y-4">
           <div className="text-4xl mb-4">📁</div>
           {isDragActive ? (
@@ -79,7 +103,9 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
           ) : (
             <div className="space-y-2">
               <p className="text-gray-600">
-                Drag and drop your file here, or click to select
+                {isUploading
+                  ? "Uploading..."
+                  : "Drag and drop your file here, or click to select"}
               </p>
               <p className="text-sm text-gray-500">
                 Supported formats: CSV, XLS, XLSX

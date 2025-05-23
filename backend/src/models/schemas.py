@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
+from fastapi import UploadFile
 
 
 class QueryRequest(BaseModel):
@@ -39,3 +40,9 @@ class TableInfo(BaseModel):
     columns: List[Dict[str, str]]  # [{"name": "col1", "type": "TEXT"}, ...]
     sample_data: List[Dict[str, Any]]
     row_count: int
+
+
+class UploadRequest(BaseModel):
+    file: Optional[UploadFile] = None
+    json_data: Optional[List[Dict[str, Any]]] = None
+    filename: Optional[str] = None
