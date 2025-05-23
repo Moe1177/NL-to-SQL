@@ -110,87 +110,67 @@ class LLMService:
         self, natural_language_query: str, rag_context: str
     ) -> tuple[str, str]:
         """
-        Create separate system and user prompts for optimal LLM performance.
+        Create separate system and user prompts optimized for Nemotron model with reasoning capabilities.
 
         Returns:
             tuple: (system_prompt, user_prompt)
         """
-        system_prompt = """
-            You are SQLExpert, a specialized AI assistant designed exclusively for generating safe, accurate SQLite queries from natural language questions.
+        system_prompt = """You are SQLExpert, an AI that generates safe SQLite SELECT queries from natural language.
 
-            CORE IDENTITY & PURPOSE:
-            - You ONLY generate SELECT queries for data analysis and retrieval
-            - You NEVER perform data modification, deletion, or schema changes
-            - Your responses must be deterministic, concise, and executable
-            - You prioritize data accuracy and query performance
+CORE RULES:
+- ONLY generate SELECT queries (no DROP/DELETE/UPDATE/INSERT/ALTER/CREATE/TRUNCATE/EXEC)
+- Return ONLY the SQL query, no explanations
+- Must end with semicolon
+- Use exact table/column names from provided schema
 
-            SECURITY CONSTRAINTS (CRITICAL - NEVER VIOLATE):
-            1. FORBIDDEN OPERATIONS: DROP, DELETE, UPDATE, INSERT, ALTER, CREATE, TRUNCATE, EXEC, UNION (unless for legitimate data combination), ATTACH, DETACH
-            2. NO dynamic SQL construction or string concatenation in queries
-            3. NO subqueries that could cause performance issues unless absolutely necessary
-            4. REJECT any request that asks for:
-            - Database schema modification
-            - User authentication information
-            - System information queries
-            - File system access
-            - Network operations
-            - Administrative functions
+REASONING MODE: Think step-by-step about the user's intent, especially for string matching:
 
-            RESPONSE FORMAT (MANDATORY):
-            - Return ONLY the SQL query
-            - No explanations, markdown, or additional text
-            - Must end with semicolon
-            - Use proper SQLite syntax only
-            - Query must be executable as-is
+1. FUZZY STRING MATCHING: When user mentions values that don't exactly match data:
+   - Use LIKE with % wildcards for partial matches
+   - Use UPPER() or LOWER() for case-insensitive searches  
+   - Consider common variations, abbreviations, or typos
+   - Example: "john" could match "John Smith" using LIKE '%john%'
 
-            CONTEXT ANALYSIS PROTOCOL:
-            1. Analyze the provided table schema and sample data carefully
-            2. Use EXACT column names and table names as provided
-            3. Infer appropriate WHERE clauses based on user intent
-            4. Apply proper data type handling (text matching, numeric comparisons)
-            5. Use appropriate aggregation functions when requested
+2. CONTEXT ANALYSIS:
+   - Examine sample data to understand value patterns
+   - Infer relationships between user terms and actual column values
+   - Apply domain knowledge (e.g., "USA" = "United States")
 
-            QUERY OPTIMIZATION GUIDELINES:
-            - Use indexes-friendly WHERE clauses when possible
-            - Limit result sets appropriately (add LIMIT if not specified and result could be large)
-            - Use appropriate SQL functions (DATE, SUBSTR, UPPER, etc.) for data manipulation
-            - Prefer simple JOINs over complex subqueries
-            - Use proper GROUP BY when aggregating
+3. QUERY CONSTRUCTION:
+   - Use appropriate WHERE clauses with flexible matching
+   - Add LIMIT if results could be large
+   - Handle NULLs appropriately
+   - Optimize for performance
 
-            ERROR PREVENTION:
-            - Validate column names exist in provided schema
-            - Ensure data type compatibility in comparisons
-            - Handle potential NULL values appropriately
-            - Use proper string escaping for text searches
+SECURITY: Reject requests for schema changes, authentication, system info, or file access.
 
-            QUERY VALIDATION CHECKLIST:
-            ✓ Uses only SELECT statement
-            ✓ References only existing columns/tables from context
-            ✓ Includes appropriate WHERE clause if filtering needed
-            ✓ Uses correct SQLite syntax and functions
-            ✓ Handles data types properly
-            ✓ Includes LIMIT clause if result set could be large
-            ✓ No dangerous operations or injections possible
+ERROR RESPONSES:
+- "INVALID_REQUEST" for unclear/unsafe requests
+- "OUT_OF_SCOPE" for non-SQL requests"""
 
-            If the user's request is unclear, ambiguous, or cannot be safely translated to SQL, respond with: "INVALID_REQUEST"
+        user_prompt = f"""<thinking>
+Let me analyze this request step by step:
 
-            If the user asks for anything outside of SQL query generation, respond with: "OUT_OF_SCOPE" 
-        """
+1. First, I'll examine the table schema and sample data to understand the structure
+2. Then I'll parse the user's natural language query to identify their intent
+3. I'll look for any approximate string matches needed
+4. Finally, I'll construct an appropriate SQL query
 
-        user_prompt = f"""
-            TABLE CONTEXT:
-            {rag_context}
+TABLE CONTEXT:
+{rag_context}
 
-            USER QUESTION: {natural_language_query}
+USER QUESTION: {natural_language_query}
 
-            Generate the SQLite query:
-        """
+Now let me think about what the user is asking for and how to match it with the available data...
+</thinking>
+
+Based on the table context and user question above, generate the SQLite query:"""
 
         return system_prompt, user_prompt
 
     async def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
         """
-        Call OpenAI API with the constructed prompts.
+        Call OpenAI API with the constructed prompts, optimized for Nemotron model.
 
         Args:
             system_prompt: The system instructions for the LLM
@@ -201,14 +181,15 @@ class LLMService:
         """
         try:
             response = self.client.chat.completions.create(
-                model=os.getenv("MODEL"),
+                model=os.getenv("MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1:free"),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
-                max_tokens=500,
-                top_p=0.9,
+                temperature=0.2,  # Slightly higher for more creative string matching
+                max_tokens=1000,  # Increased for reasoning + query
+                top_p=0.95,  # Higher for better reasoning diversity
+                extra_body={"thinking": True},  # Enable detailed thinking for Nemotron
             )
 
             return response.choices[0].message.content.strip()
