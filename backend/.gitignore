@@ -10,3 +10,15 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded files (if you store them locally)
+uploads/
+temp/
+
+# Environment variables
+.env
