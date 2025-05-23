@@ -75,13 +75,6 @@ class FileProcessor:
         else:
             raise ValueError(f"Unsupported file type: {filename}")
 
-        # TODO: Add your data preprocessing logic here
-        # Examples:
-        # - Clean column names (remove spaces, special characters)
-        # - Handle missing values
-        # - Convert data types
-        # - Remove empty rows/columns
-
         # Basic cleaning (you can expand this)
         df.columns = df.columns.str.strip()  # Remove whitespace from column names
 
