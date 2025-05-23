@@ -8,7 +8,6 @@ from models.schemas import (
     FileUploadResponse,
     QueryRequest,
     QueryResponse,
-    UploadRequest,
 )
 from services.database_manager import DatabaseManager
 from services.file_processor import FileProcessor
@@ -40,37 +39,6 @@ app.add_middleware(
 file_processor = FileProcessor()
 db_manager = DatabaseManager()
 llm_service = LLMService()
-
-
-@app.post("/upload", response_model=FileUploadResponse)
-async def upload_file(file: Optional[UploadFile] = File(None)):
-    """
-    Upload a CSV/Excel file and create a SQLite table from it.
-    Returns table info and column details for context.
-    """
-    try:
-        if not file:
-            raise HTTPException(status_code=400, detail="No file provided")
-
-        # Validate file type
-        if not file.filename.endswith((".csv", ".xlsx", ".xls")):
-            raise HTTPException(
-                status_code=400, detail="Only CSV and Excel files are supported"
-            )
-
-        # Process the uploaded file
-        table_info = await file_processor.process_uploaded_file(file)
-
-        return FileUploadResponse(
-            success=True,
-            table_name=table_info["table_name"],
-            columns=table_info["columns"],
-            sample_data=table_info["sample_data"],
-            row_count=table_info["row_count"],
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing data: {str(e)}")
 
 
 @app.post("/upload-json", response_model=FileUploadResponse)
