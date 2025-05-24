@@ -19,6 +19,10 @@ class JsonUploadRequest(BaseModel):
     json_data: list
     filename: str
 
+# Add a request model for reset endpoint
+class ResetRequest(BaseModel):
+    table_name: str
+
 
 app = FastAPI(
     title="Natural Language to SQL API",
@@ -102,6 +106,35 @@ async def natural_language_query(request: QueryRequest):
     except Exception as e:
         print(f"Query Error: {str(e)}")  # Debug log
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
+
+
+@app.post("/reset", response_model=QueryResponse)
+async def reset_table(request: ResetRequest):
+    """
+    Reset the view to show all data from the table.
+    """
+    try:
+        print(f"Reset - Received table name: {request.table_name}")  # Debug log
+        
+        # Generate a simple SELECT * query
+        sql_query = f'SELECT * FROM "{request.table_name}";'
+        print(f"Reset - Generated SQL: {sql_query}")  # Debug log
+
+        # Execute the query
+        results = db_manager.execute_query(sql_query, request.table_name)
+        print(f"Reset - Executed query successfully")  # Debug log
+        
+        return QueryResponse(
+            success=True,
+            generated_sql=sql_query,
+            results=results["data"],
+            row_count=results["row_count"],
+            columns=results["columns"],
+        )
+
+    except Exception as e:
+        print(f"Reset Error: {str(e)}")  # Debug log
+        raise HTTPException(status_code=500, detail=f"Error resetting table: {str(e)}")
 
 
 @app.get("/tables")

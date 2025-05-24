@@ -30,13 +30,38 @@ export default function Home() {
   };
 
   const handlePromptSubmit = (prompt: string) => {
-    // This is now handled in the PromptInput component
-    console.log("Prompt submitted:", prompt);
+    console.log("Submitted prompt:", prompt);
   };
 
   const handleQueryResult = (result: any) => {
     console.log("Query result received:", result); // Debug log
     setQueryResult(result);
+  };
+
+  const handleReset = async () => {
+    try {
+      console.log("Resetting view for table:", tableName); // Debug log
+
+      const response = await fetch("http://localhost:8000/reset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ table_name: tableName }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to reset view");
+      }
+
+      const result = await response.json();
+      console.log("Reset successful:", result); // Debug log
+      setQueryResult(result);
+    } catch (error) {
+      console.error("Error resetting view:", error);
+      // You might want to show an error message to the user here
+    }
   };
 
   return (
@@ -56,31 +81,33 @@ export default function Home() {
             <FileUpload onFileUpload={handleFileUpload} />
           </div>
 
-          {data.length > 0 && (
-            <>
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-                <PromptInput
-                  onSubmit={handlePromptSubmit}
-                  tableName={tableName}
-                  onQueryResult={handleQueryResult}
-                />
-              </div>
+          {tableName && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+              <PromptInput
+                onSubmit={handlePromptSubmit}
+                tableName={tableName}
+                onQueryResult={handleQueryResult}
+              />
+            </div>
+          )}
 
-              {queryResult ? (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-                  <QueryResults
-                    results={queryResult.results}
-                    columns={queryResult.columns}
-                    generatedSql={queryResult.generated_sql}
-                    rowCount={queryResult.row_count}
-                  />
-                </div>
-              ) : (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-                  <DataPreview data={data} fileName={fileName} />
-                </div>
-              )}
-            </>
+          {queryResult ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+              <QueryResults
+                results={queryResult.results}
+                columns={queryResult.columns}
+                generatedSql={queryResult.generated_sql}
+                rowCount={queryResult.row_count}
+                tableName={tableName}
+                onReset={handleReset}
+              />
+            </div>
+          ) : (
+            data.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+                <DataPreview data={data} fileName={fileName} />
+              </div>
+            )
           )}
         </div>
       </div>
