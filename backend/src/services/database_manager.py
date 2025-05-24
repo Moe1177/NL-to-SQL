@@ -3,6 +3,7 @@ import sqlite3
 from typing import Any, Dict, List
 
 import pandas as pd
+import re
 
 
 class DatabaseManager:
@@ -59,14 +60,14 @@ class DatabaseManager:
             if not cursor.fetchone():
                 raise ValueError(f"Table '{table_name}' does not exist")
 
-            # Replace unquoted table name with properly quoted version
-            # This handles cases where the LLM doesn't properly quote the table name
+            # Only replace unquoted table name to prevent double-quoting
             quoted_table_name = f'"{table_name}"'
-            modified_query = sql_query.replace(table_name, quoted_table_name)
-            print(f"Modified query: {modified_query}")  # Debug log
+            # Use regex to only replace unquoted instances of the table name
+            sql_query = re.sub(rf'(?<!"){re.escape(table_name)}(?!")', quoted_table_name, sql_query)
+            print(f"Modified query: {sql_query}")  # Debug log
 
             # Execute query using pandas for easy result handling
-            df_result = pd.read_sql_query(modified_query, conn)
+            df_result = pd.read_sql_query(sql_query, conn)
 
             results = {
                 "data": df_result.to_dict("records"),

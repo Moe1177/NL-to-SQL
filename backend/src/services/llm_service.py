@@ -332,6 +332,8 @@ SELECT"""
             Generated SQL query string
         """
         try:
+            #print(system_prompt)
+            #print(user_prompt)
             response = self.client.chat.completions.create(
                 model=os.getenv("MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1:free"),
                 messages=[
@@ -343,7 +345,7 @@ SELECT"""
                 top_p=0.95,  # Higher for better reasoning diversity
                 extra_body={"thinking": True},  # Enable detailed thinking for Nemotron
             )
-
+            print(response)
             return response.choices[0].message.content.strip()
 
         except Exception as e:
